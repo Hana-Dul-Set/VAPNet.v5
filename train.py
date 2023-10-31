@@ -51,6 +51,7 @@ class Trainer(object):
 
         self.magnitude_loss_fn = torch.nn.L1Loss(reduction='mean')
         self.adjustment_loss_fn = torch.nn.BCEWithLogitsLoss(reduction='mean')
+        self.suggestion_loss_fn = torch.nn.BCELoss(reduction='mean')
 
         self.optimizer = optim.Adam(params=model.parameters(),
                                     lr=self.cfg.learning_rate,
@@ -68,6 +69,7 @@ class Trainer(object):
         self.suggested_case_iter = 0
         self.magnitude_loss_sum = 0
         self.adjustment_loss_sum = 0
+        self.suggestion_loss_sum = 0
 
     def training(self):
         print('\n======train start======\n')
@@ -83,48 +85,58 @@ class Trainer(object):
             unlabeled_data_list = data
 
             # get randomly perturbed or not perturbed image and label
-            l_image_list, l_magnitude_label_list, l_adjustment_label_list = self.get_labeled_data_list(bc_data_list)
+            l_image_list, l_magnitude_label_list, l_adjustment_label_list, l_suggestion_label_list = self.get_labeled_data_list(bc_data_list)
 
             # get unlabeled data label
             ul_image_list = [Image.open(os.path.join('../VAPNet/data/open_images', x[0])).convert('RGB') for x in unlabeled_data_list]
             ul_magnitude_label_list = [x[1] for x in unlabeled_data_list]
             ul_adjustment_label_list = [x[2] for x in unlabeled_data_list]
+            ul_suggestion_label_list = [x[3] for x in unlabeled_data_list]
 
             # combine
             image_list = l_image_list + ul_image_list
+            gt_suggestion_list = l_suggestion_label_list + ul_suggestion_label_list
             gt_magnitude_list = l_magnitude_label_list + ul_magnitude_label_list
             gt_adjustment_list = l_adjustment_label_list + ul_adjustment_label_list
 
             # shuffle
-            combined_list = list(zip(image_list, gt_magnitude_list, gt_adjustment_list))
+            combined_list = list(zip(image_list, gt_magnitude_list, gt_adjustment_list, gt_suggestion_list))
             random.shuffle(combined_list)
-            image_list, gt_magnitude_list, gt_adjustment_list = [list(x) for x in zip(*combined_list)]
+            image_list, gt_magnitude_list, gt_adjustment_list, gt_suggestion_list = [list(x) for x in zip(*combined_list)]
             
             # model inference
-            predicted_magnitude, predicted_adjustment = self.model(self.convert_image_list_to_tensor(image_list).to(self.device))
+            predicted_suggestion, predicted_adjustment, predicted_magnitude  = self.model(self.convert_image_list_to_tensor(image_list).to(self.device))
 
+            selected_gt_adjustment_list = []
+            selected_predicted_adjustment = []
             selected_gt_magnitude_list = []
             selected_predicted_magnitude = []
-            for index, adjustment_label in enumerate(gt_adjustment_list):
-                if adjustment_label[4] == 1:
+            for index, suggestion_label in enumerate(gt_suggestion_list):
+                if suggestion_label == [0.0]:
                     continue
                 selected_gt_magnitude_list.append(gt_magnitude_list[index])
                 selected_predicted_magnitude.append(predicted_magnitude[index])
+                selected_gt_adjustment_list.append(gt_adjustment_list[index])
+                selected_predicted_adjustment.append(predicted_adjustment[index])
             
             gt_magnitude_list = selected_gt_magnitude_list
             predicted_magnitude = torch.stack(selected_predicted_magnitude)
+            gt_adjustment_list = selected_gt_adjustment_list
+            predicted_adjustment = torch.stack(selected_predicted_adjustment)
 
             gt_magnitude_list = torch.tensor(gt_magnitude_list).to(self.device)
             gt_adjustment_list = torch.tensor(gt_adjustment_list).to(self.device)
 
-            # calculate adjustment, magnitude loss using BCELoss, L1 Loss
+            # calculate suggestion, adjustment, magnitude loss using BCELoss, L1 Loss
+            suggestion_loss = self.suggestion_loss_fn(predicted_suggestion, gt_suggestion_list)
             magnitude_loss = self.magnitude_loss_fn(predicted_magnitude, gt_magnitude_list)
             adjustment_loss = self.adjustment_loss_fn(predicted_adjustment, gt_adjustment_list)
 
-            total_loss = adjustment_loss + magnitude_loss
-            train_log = f'adjustment loss: {adjustment_loss.item():.5f}/magnitude loss:{magnitude_loss.item():.5f}'
+            total_loss = suggestion_loss + adjustment_loss + magnitude_loss
+            train_log = f'suggestion loss: {suggestion_loss.item():.5f}/adjustment loss: {adjustment_loss.item():.5f}/magnitude loss:{magnitude_loss.item():.5f}'
             print(train_log)
 
+            self.suggestion_loss_sum += suggestion_loss.item()
             self.magnitude_loss_sum += magnitude_loss.item()
             self.adjustment_loss_sum += adjustment_loss.item()
 
@@ -136,13 +148,15 @@ class Trainer(object):
             self.suggested_case_iter += 1
 
             if self.train_iter % 20 == 0:
+                ave_suggestion_loss = self.suggestion_loss_sum / self.suggested_case_iter
                 ave_magnitude_loss = self.magnitude_loss_sum / self.suggested_case_iter
                 ave_adjustment_loss = self.adjustment_loss_sum / self.suggested_case_iter
 
-                wandb.log({"Train Loss/magnitude_loss": ave_magnitude_loss, "Train Loss/adjustment_loss": ave_adjustment_loss})
+                wandb.log({"Train Loss/suggestion_loss": ave_suggestion_loss, "Train Loss/magnitude_loss": ave_magnitude_loss, "Train Loss/adjustment_loss": ave_adjustment_loss})
                 self.magnitude_loss_sum = 0
                 self.suggested_case_iter = 0
                 self.adjustment_loss_sum = 0
+                self.suggestion_loss_sum = 0
 
             """
             if self.train_iter % 5000 == 0:
@@ -190,6 +204,7 @@ class Trainer(object):
 
             self.magnitude_loss_sum = 0
             self.adjustment_loss_sum = 0
+            self.suggestion_loss_sum = 0
             self.train_iter = 0
             self.suggested_case_iter = 0
 
@@ -200,7 +215,7 @@ class Trainer(object):
 
         func_choice = random.randint(0, 1)
         if func_choice == 0:
-            return image.crop(best_crop_bounding_box), (0.0, 0.0), [0.0, 0.0, 0.0, 0.0, 1.0]
+            return image.crop(best_crop_bounding_box), (0.0, 0.0), [0.0, 0.0, 0.0, 0.0], [0.0]
         elif func_choice == 1:
             output = get_shifted_image(image, best_crop_bounding_box, allow_zero_pixel=False, option='vapnet')
         """
@@ -211,7 +226,7 @@ class Trainer(object):
             return None
         perturbed_image, operator = output
         
-        adjustment_label = [0.0] * 5
+        adjustment_label = [0.0] * 4
         if operator[0] < 0:
             operator[0] = abs(operator[0])
             adjustment_label[1] = 1.0
@@ -224,12 +239,13 @@ class Trainer(object):
         elif operator[1] > 0:
             adjustment_label[2] = 1.0
     
-        return perturbed_image, (operator[0], operator[1]), adjustment_label
+        return perturbed_image, (operator[0], operator[1]), adjustment_label, [1.0]
 
     def get_labeled_data_list(self, bc_data_list):
         image_list = []
         magnitude_label_list = []
         adjustment_label_list = []
+        suggestion_label_list = []
 
         for data in bc_data_list:
             labeled_data = self.get_perturbed_image(data)
@@ -238,15 +254,16 @@ class Trainer(object):
             image_list.append(labeled_data[0])
             magnitude_label_list.append(labeled_data[1])
             adjustment_label_list.append(labeled_data[2])
+            suggestion_label_list.append(labeled_data[3])
 
-        return image_list, magnitude_label_list, adjustment_label_list
+        return image_list, magnitude_label_list, adjustment_label_list, suggestion_label_list
 
 if __name__ == '__main__':
     cfg = Config()
     
     wandb.init(
         # set the wandb project where this run will be logged
-        project="vapnet.v3",
+        project="vapnet.v4",
         
         # track hyperparameters and run metadata
         config={

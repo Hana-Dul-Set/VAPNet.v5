@@ -24,9 +24,15 @@ class VAPNet(nn.Module):
             nn.Dropout(p=0.5)
         )
 
+        self.suggestion_output_layer = nn.Sequential(
+            nn.Linear(1024, 1024),
+            nn.Linear(1024, 1),
+            nn.Sigmoid()
+        )
+
         self.adjustment_output_layer = nn.Sequential(
             nn.Linear(1024, 1024),
-            nn.Linear(1024, 5),
+            nn.Linear(1024, 4),
         )
 
         self.magnitude_output_layer = nn.Sequential(
@@ -39,10 +45,11 @@ class VAPNet(nn.Module):
         spp = self.spatial_pyramid_pool(feature_map, feature_map.shape[0], self.spp_pool_size)
         feature_vector = self.last_layer(spp)
 
-        adjustment_output_layer = self.adjustment_output_layer(feature_vector)
+        suggestion_output = self.suggestion_output_layer(feature_vector)
+        adjustment_output = self.adjustment_output_layer(feature_vector)
         magnitude_output = self.magnitude_output_layer(feature_vector)
 
-        return magnitude_output, adjustment_output_layer
+        return suggestion_output, adjustment_output, magnitude_output
     
     def build_backbone(self, pretrained):
         model = torchvision.models.mobilenet_v2(pretrained)

@@ -60,9 +60,10 @@ class UnlabledDataset(Dataset):
     def __getitem__(self, index):
         data = self.data_list[index]
         image_name = data['name']
+        suggestion_label = data['suggestion']
         adjustment_label = data['adjustment']
         magnitude_label = data['magnitude']
-        return image_name, magnitude_label, adjustment_label
+        return image_name, magnitude_label, adjustment_label, suggestion_label
 
     def build_data_list(self):
         data_list = []
@@ -107,9 +108,10 @@ class LabledDataset(Dataset):
         
         bounding_box = torch.tensor(data['bounding_box'])
         perturbed_bounding_box = torch.tensor(data['perturbed_bounding_box'])
+        suggestion_label = torch.tensor(data['suggestion'])
         adjustment_label = torch.tensor(data['adjustment'])
         magnitude_label = torch.tensor(data['magnitude'])
-        return transformed_image, image_size, bounding_box, perturbed_bounding_box, magnitude_label, adjustment_label
+        return transformed_image, image_size, bounding_box, perturbed_bounding_box, magnitude_label, adjustment_label, suggestion_label
 
     def build_data_list(self):
         data_list = []
