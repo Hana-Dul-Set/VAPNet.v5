@@ -25,12 +25,20 @@ def update_operator(type, option='csnet', direction=None):
             operator[1] = random.uniform(-0.4, 0.4)
         if option == 'vapnet' or option=='vapnet_test':
             plus_or_minus = random.randint(0, 1)
-            operator[0] = -1 * (-1 if plus_or_minus else 1) * random.uniform(0.05, 0.40)
+            operator[0] = -1 * (-1 if plus_or_minus else 1) * random.uniform(0.0, 0.40)
             plus_or_minus = random.randint(0, 1)
-            operator[1] = -1 * (-1 if plus_or_minus else 1) * random.uniform(0.05, 0.40)
-            while operator[0] ** 2 + operator[1] ** 2 > 0.4 ** 2:
-                operator[0] = -1 * (-1 if plus_or_minus else 1) * random.uniform(0.05, 0.40)
-                operator[1] = -1 * (-1 if plus_or_minus else 1) * random.uniform(0.05, 0.40)
+            operator[1] = -1 * (-1 if plus_or_minus else 1) * random.uniform(0.0, 0.40)
+
+            while (operator[0] ** 2 + operator[1] ** 2 > 0.4 ** 2) and (abs(operator[0]) < 0.05 and abs(operator[1]) < 0.05):
+                plus_or_minus = random.randint(0, 1)
+                operator[0] = -1 * (-1 if plus_or_minus else 1) * random.uniform(0.0, 0.40)
+                plus_or_minus = random.randint(0, 1)
+                operator[1] = -1 * (-1 if plus_or_minus else 1) * random.uniform(0.0, 0.40)
+            
+            if abs(operator[0]) < 0.05:
+                operator[0] = 0.0
+            if abs(operator[1]) < 0.05:
+                operator[1] = 0.0
             
     elif type == 'zoom':
         if option == 'csnet':

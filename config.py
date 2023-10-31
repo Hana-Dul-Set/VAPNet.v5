@@ -12,14 +12,15 @@ class Config:
         self.unlabeled_data = os.path.join(self.data_dir, 'unlabeled_vapnet')
         self.labeled_data = os.path.join(self.data_dir, 'labeled_vapnet')
 
-        self.adjustment_count = 4
+        self.adjustment_count = 5
         self.fpr_limit = 0.3
+        self.adjustment_threshold = [0.6, 0.6, 0.6, 0.6, 0.70]
 
         self.gpu_id = 0
         self.num_workers = 0
 
         self.batch_size = 64
-        self.learning_rate = 2e-5
+        self.learning_rate = 1e-5
         self.weight_decay = 5e-4
 
         self.max_epoch = 10000

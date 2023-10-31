@@ -50,7 +50,7 @@ class UnlabledDataset(Dataset):
         self.dataset_path = self.cfg.unlabeled_data
         
         if mode == 'train':
-            self.annotation_path = os.path.join(self.dataset_path, 'unlabeled_training_set_v2_1015_h_a.json')
+            self.annotation_path = os.path.join(self.dataset_path, 'unlabeled_training_set_v3_1024_h_a.json')
 
         self.data_list = self.build_data_list()
 
@@ -60,8 +60,9 @@ class UnlabledDataset(Dataset):
     def __getitem__(self, index):
         data = self.data_list[index]
         image_name = data['name']
+        adjustment_label = data['adjustment']
         magnitude_label = data['magnitude']
-        return image_name, magnitude_label
+        return image_name, magnitude_label, adjustment_label
 
     def build_data_list(self):
         data_list = []
@@ -78,7 +79,7 @@ class LabledDataset(Dataset):
         self.dataset_path = self.cfg.labeled_data
         
         if mode == 'test':
-            self.annotation_path = os.path.join(self.dataset_path, 'labeled_testing_set_v2.json')
+            self.annotation_path = os.path.join(self.dataset_path, 'labeled_testing_set_v3.json')
 
         self.data_list = self.build_data_list()
 
@@ -106,8 +107,9 @@ class LabledDataset(Dataset):
         
         bounding_box = torch.tensor(data['bounding_box'])
         perturbed_bounding_box = torch.tensor(data['perturbed_bounding_box'])
+        adjustment_label = torch.tensor(data['adjustment'])
         magnitude_label = torch.tensor(data['magnitude'])
-        return transformed_image, image_size, bounding_box, perturbed_bounding_box, magnitude_label
+        return transformed_image, image_size, bounding_box, perturbed_bounding_box, magnitude_label, adjustment_label
 
     def build_data_list(self):
         data_list = []
