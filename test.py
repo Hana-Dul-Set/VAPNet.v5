@@ -42,6 +42,8 @@ class Tester(object):
         self.adjustment_loss_fn = torch.nn.BCEWithLogitsLoss(reduction='mean')
         self.magnitude_loss_fn = torch.nn.L1Loss(reduction='mean')
 
+        self.fpr_limit = self.cfg.fpr_limit
+
         self.suggestion_threshold = self.cfg.suggestion_threshold
         self.adjustment_threshold = np.array(adjustment_threeshold)
         self.adjustment_count = self.cfg.adjustment_count
@@ -127,6 +129,8 @@ class Tester(object):
                 total_image_size += image_size
         
         auc_score, tpr, threshold = self.calculate_suggestion_accuracy(total_gt_suggesiton_label, total_predicted_suggestion)
+        with open('threshold.csv', 'a') as f:
+            f.writelines(f'{threshold}\n')
         f1_score = self.calculate_f1_score(total_gt_adjustment_label, total_one_hot_predicted_adjustment)
 
         # get predicted bounding box
@@ -169,7 +173,7 @@ class Tester(object):
         ave_adjustment_loss = self.adjustment_loss_sum / self.data_length
 
         loss_log = f'{ave_suggestion_loss}/{ave_adjustment_loss}/{ave_magnitude_loss}'
-        accuracy_log = f'{auc:.5f}/{tpr:.5f}/{f1_score}/{iou_score:.5f}'
+        accuracy_log = f'{auc_score:.5f}/{tpr:.5f}/{f1_score}/{iou_score:.5f}'
     
         print(loss_log)
         print(accuracy_log)
@@ -180,9 +184,8 @@ class Tester(object):
             f"Test/f1-score(right)": f1_score[1],
             f"Test/f1-score(up)": f1_score[2],
             f"Test/f1-score(down)": f1_score[3],
-            f"Test/f1-score(no-suggestion)": f1_score[4],
             f"Test/IoU": iou_score,
-            f"suggestion_accuracy/auc": auc,
+            f"suggestion_accuracy/auc": auc_score,
             f"suggestion_accuracy/tpr": tpr
         })
     
@@ -218,24 +221,18 @@ class Tester(object):
     
     def convert_array_to_one_hot_encoded(self, array):
         sigmoid_array = torch.sigmoid(torch.tensor(array)).numpy()
-        if sigmoid_array[4] >= self.adjustment_threshold[4]:
-            sigmoid_array[:4] = 0.0
-            sigmoid_array[4] = 1.0
-            one_hot_encoded = sigmoid_array
-        else:
-            sigmoid_array[4] = 0.0
-            boolean_encoded = sigmoid_array >=  self.adjustment_threshold
-            one_hot_encoded = boolean_encoded.astype(float)
-            if one_hot_encoded[0] == 1.0 and one_hot_encoded[1] == 1.0:
-                with open('exception.csv', 'a') as f:
-                    f.writelines(f'{array},{sigmoid_array}\n')
-                one_hot_encoded[0] = 0.0
-                one_hot_encoded[1] = 0.0
-            if one_hot_encoded[2] == 1.0 and one_hot_encoded[3] == 1.0:
-                with open('exception.csv', 'a') as f:
-                    f.writelines(f'{array},{sigmoid_array}\n')
-                one_hot_encoded[2] = 0.0
-                one_hot_encoded[3] = 0.0
+        boolean_encoded = sigmoid_array >=  self.adjustment_threshold
+        one_hot_encoded = boolean_encoded.astype(float)
+        if one_hot_encoded[0] == 1.0 and one_hot_encoded[1] == 1.0:
+            with open('exception.csv', 'a') as f:
+                f.writelines(f'{array},{sigmoid_array}\n')
+            one_hot_encoded[0] = 0.0
+            one_hot_encoded[1] = 0.0
+        if one_hot_encoded[2] == 1.0 and one_hot_encoded[3] == 1.0:
+            with open('exception.csv', 'a') as f:
+                f.writelines(f'{array},{sigmoid_array}\n')
+            one_hot_encoded[2] = 0.0
+            one_hot_encoded[3] = 0.0
                 
         return one_hot_encoded
     
@@ -287,5 +284,5 @@ if __name__ == '__main__':
     weight_file = os.path.join(cfg.weight_dir, 'checkpoint-weight.pth')
     model.load_state_dict(torch.load(weight_file))
 
-    tester = Tester(model, cfg)
+    tester = Tester(model, cfg, cfg.adjustment_threshold)
     tester.run()

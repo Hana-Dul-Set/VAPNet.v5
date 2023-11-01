@@ -76,7 +76,7 @@ class Trainer(object):
         self.model.train().to(self.device)
         bc_iter = iter(self.bc_loader)
         for index, data in enumerate(self.unlabeled_loader):
-
+            
             self.train_iter += 1
             try:
                 bc_data_list = next(bc_iter)
@@ -124,6 +124,7 @@ class Trainer(object):
             gt_adjustment_list = selected_gt_adjustment_list
             predicted_adjustment = torch.stack(selected_predicted_adjustment)
 
+            gt_suggestion_list = torch.tensor(gt_suggestion_list).to(self.device)
             gt_magnitude_list = torch.tensor(gt_magnitude_list).to(self.device)
             gt_adjustment_list = torch.tensor(gt_adjustment_list).to(self.device)
 
