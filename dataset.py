@@ -50,7 +50,7 @@ class UnlabledDataset(Dataset):
         self.dataset_path = self.cfg.unlabeled_data
         
         if mode == 'train':
-            self.annotation_path = os.path.join(self.dataset_path, 'unlabeled_training_set_v3_1024_h_a.json')
+            self.annotation_path = os.path.join(self.dataset_path, 'unlabeled_training_set_v4_1101_h_a.json')
 
         self.data_list = self.build_data_list()
 
@@ -80,7 +80,7 @@ class LabledDataset(Dataset):
         self.dataset_path = self.cfg.labeled_data
         
         if mode == 'test':
-            self.annotation_path = os.path.join(self.dataset_path, 'labeled_testing_set_v3.json')
+            self.annotation_path = os.path.join(self.dataset_path, 'labeled_testing_set_v4.json')
 
         self.data_list = self.build_data_list()
 

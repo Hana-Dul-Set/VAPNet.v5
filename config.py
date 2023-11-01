@@ -14,6 +14,7 @@ class Config:
 
         self.adjustment_count = 4
         self.fpr_limit = 0.3
+        self.suggestion_threshold = 0.9
         self.adjustment_threshold = [0.6, 0.6, 0.6, 0.6]
 
         self.gpu_id = 0

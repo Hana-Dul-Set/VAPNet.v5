@@ -38,14 +38,17 @@ class Tester(object):
 
         self.batch_size = self.cfg.batch_size
 
+        self.suggestion_loss_fn = torch.nn.BCELoss(reduction='mean')
         self.adjustment_loss_fn = torch.nn.BCEWithLogitsLoss(reduction='mean')
         self.magnitude_loss_fn = torch.nn.L1Loss(reduction='mean')
 
+        self.suggestion_threshold = self.cfg.suggestion_threshold
         self.adjustment_threshold = np.array(adjustment_threeshold)
         self.adjustment_count = self.cfg.adjustment_count
 
         self.data_length = self.data_loader.__len__()
 
+        self.suggestion_loss_sum = 0
         self.magnitude_loss_sum = 0
         self.adjustment_loss_sum = 0
         self.iou_score_sum = 0
@@ -57,6 +60,8 @@ class Tester(object):
         total_predicted_magnitude = np.array([])
         total_gt_adjustment_label = np.array([])
         total_one_hot_predicted_adjustment = np.array([])
+        total_gt_suggesiton_label = np.array([])
+        total_predicted_suggestion = np.array([])
 
         total_gt_perturbed_bounding_box = []
         total_gt_bounding_box = []
@@ -72,31 +77,41 @@ class Tester(object):
                 gt_perturbed_bounding_box = data[3].tolist()
                 gt_magnitude_label = data[4].to(self.device)
                 gt_adjustment_label = data[5].to(self.device)
+                gt_suggestion_label = data[6].to(self.device)
 
                 # model inference
-                predicted_magnitude, predicted_adjustment = self.model(image.to(self.device))
-
+                predicted_suggestion, predicted_adjustment, predicted_magnitude = self.model(image.to(self.device))
+                
+                selected_gt_adjustment_label = []
+                selected_predicted_adjustment = []
                 selected_gt_magnitude_label = []
                 selected_predicted_magnitude = []
 
-                for index, adjustment_label in enumerate(predicted_adjustment):
-                    if adjustment_label[4] >= self.adjustment_threshold[4]:
+                for index, suggestion_label in enumerate(predicted_suggestion):
+                    if suggestion_label < self.suggestion_threshold:
                         continue
+                    selected_gt_adjustment_label.append(gt_adjustment_label[index])
+                    selected_predicted_adjustment.append(predicted_adjustment[index])
                     selected_gt_magnitude_label.append(gt_magnitude_label[index])
                     selected_predicted_magnitude.append(predicted_magnitude[index])
 
+                selected_gt_adjustment_label = torch.stack(selected_gt_adjustment_label)
+                selected_predicted_adjustment = torch.stack(selected_predicted_adjustment)
                 selected_gt_magnitude_label = torch.stack(selected_gt_magnitude_label)
                 selected_predicted_magnitude = torch.stack(selected_predicted_magnitude)
 
                 # caculate loss
+                self.suggestion_loss_sum += self.suggestion_loss_fn(predicted_suggestion, gt_suggestion_label)
                 self.magnitude_loss_sum += self.magnitude_loss_fn(selected_predicted_magnitude, selected_gt_magnitude_label)
-                self.adjustment_loss_sum += self.adjustment_loss_fn(predicted_adjustment, gt_adjustment_label)
+                self.adjustment_loss_sum += self.adjustment_loss_fn(selected_predicted_adjustment, selected_gt_adjustment_label)
 
                 # convert tensor to numpy for using sklearn metrics
                 gt_magnitude_label = gt_magnitude_label.to('cpu').numpy()
                 predicted_magnitude = predicted_magnitude.to('cpu').numpy()
                 gt_adjustment_label = gt_adjustment_label.to('cpu').numpy()
                 predicted_adjustment = predicted_adjustment.to('cpu').numpy()
+                gt_suggestion_label = gt_suggestion_label.to('cpu').numpy()
+                predicted_suggestion = predicted_suggestion.to('cpu').numpy()
 
                 one_hot_predicted_adjustment = np.apply_along_axis(self.convert_array_to_one_hot_encoded, arr=predicted_adjustment, axis=1)
 
@@ -104,11 +119,14 @@ class Tester(object):
                 total_predicted_magnitude = self.add_to_total(predicted_magnitude, total_predicted_magnitude)
                 total_gt_adjustment_label = self.add_to_total(gt_adjustment_label, total_gt_adjustment_label)
                 total_one_hot_predicted_adjustment = self.add_to_total(one_hot_predicted_adjustment, total_one_hot_predicted_adjustment)
+                total_gt_suggesiton_label = self.add_to_total(gt_suggestion_label, total_gt_suggesiton_label)
+                total_predicted_suggestion = self.add_to_total(predicted_suggestion, total_predicted_suggestion)
                 
                 total_gt_bounding_box += gt_bounding_box
                 total_gt_perturbed_bounding_box += gt_perturbed_bounding_box
                 total_image_size += image_size
         
+        auc_score, tpr, threshold = self.calculate_suggestion_accuracy(total_gt_suggesiton_label, total_predicted_suggestion)
         f1_score = self.calculate_f1_score(total_gt_adjustment_label, total_one_hot_predicted_adjustment)
 
         # get predicted bounding box
@@ -116,8 +134,9 @@ class Tester(object):
         
         for index, gt_perturbed_box in enumerate(total_gt_perturbed_bounding_box):
             
+            suggestion_label = total_predicted_suggestion[index]
             adjustment_label = total_one_hot_predicted_adjustment[index]
-            if adjustment_label[4] == 1.0:
+            if suggestion_label < self.suggestion_threshold:
                 magnitude = [0.0, 0.0]
             else:
                 magnitude = total_predicted_magnitude[index].copy()
@@ -145,23 +164,26 @@ class Tester(object):
 
         print('\n======test end======\n')
 
+        ave_suggestion_loss = self.suggestion_loss_sum / self.data_length
         ave_magnitude_loss = self.magnitude_loss_sum  / self.data_length
         ave_adjustment_loss = self.adjustment_loss_sum / self.data_length
 
-        loss_log = f'{ave_adjustment_loss}/{ave_magnitude_loss}'
-        accuracy_log = f'{f1_score}/{iou_score:.5f}'
+        loss_log = f'{ave_suggestion_loss}/{ave_adjustment_loss}/{ave_magnitude_loss}'
+        accuracy_log = f'{auc:.5f}/{tpr:.5f}/{f1_score}/{iou_score:.5f}'
     
         print(loss_log)
         print(accuracy_log)
         
-        wandb.log({"Test/test_magnitude_loss": ave_magnitude_loss, "Test/test_adjustment_loss": ave_adjustment_loss})
+        wandb.log({"Test/test_magnitude_loss": ave_magnitude_loss, "Test/test_adjustment_loss": ave_adjustment_loss, "Test/test_suggestion_loss": ave_suggestion_loss})
         wandb.log({
             f"Test/f1-score(left)": f1_score[0],
             f"Test/f1-score(right)": f1_score[1],
             f"Test/f1-score(up)": f1_score[2],
             f"Test/f1-score(down)": f1_score[3],
             f"Test/f1-score(no-suggestion)": f1_score[4],
-            f"Test/IoU": iou_score
+            f"Test/IoU": iou_score,
+            f"suggestion_accuracy/auc": auc,
+            f"suggestion_accuracy/tpr": tpr
         })
     
     def add_to_total(self, target_np_array, total_np_array):
@@ -170,6 +192,29 @@ class Tester(object):
         else:
             total_np_array = np.concatenate((total_np_array, target_np_array))
         return total_np_array
+    
+    def calculate_suggestion_accuracy(self, gt_suggestion, predicted_suggestion):
+        def find_idx_for_fpr(fpr):
+            idices = np.where(np.abs(fpr - self.fpr_limit) == np.min(np.abs(fpr - self.fpr_limit)))
+            return np.max(idices)
+
+        gt_suggestion = np.array(gt_suggestion).flatten()
+        predicted_suggestion = predicted_suggestion.flatten()
+        fpr, tpr, cut = roc_curve(gt_suggestion, predicted_suggestion)
+        auc_score = auc(fpr, tpr)
+        idx = find_idx_for_fpr(fpr)
+
+        tpr_score = tpr[idx]
+        threshold = cut[idx]
+        """
+        print('gt suggestion:', gt_suggestion)
+        print('predicted_suggestion:', predicted_suggestion)
+        print('FPR:', fpr)
+        print('TPR:', tpr)
+        print('CUT:', cut)
+        print(f'idx: {idx}/threshold: {threshold}')
+        """
+        return auc_score, tpr_score, threshold
     
     def convert_array_to_one_hot_encoded(self, array):
         sigmoid_array = torch.sigmoid(torch.tensor(array)).numpy()
