@@ -25,7 +25,7 @@ def build_dataloader(cfg):
     return data_loader
 
 class Tester(object):
-    def __init__(self, model, cfg, adjustment_threeshold):
+    def __init__(self, model, cfg, adjustment_threshold):
         self.cfg = cfg
         self.model = model
 
@@ -45,10 +45,11 @@ class Tester(object):
         self.fpr_limit = self.cfg.fpr_limit
 
         self.suggestion_threshold = self.cfg.suggestion_threshold
-        self.adjustment_threshold = np.array(adjustment_threeshold)
+        self.adjustment_threshold = np.array(adjustment_threshold)
         self.adjustment_count = self.cfg.adjustment_count
 
         self.data_length = self.data_loader.__len__()
+        self.suggested_iter = 0
 
         self.suggestion_loss_sum = 0
         self.magnitude_loss_sum = 0
@@ -97,15 +98,18 @@ class Tester(object):
                     selected_gt_magnitude_label.append(gt_magnitude_label[index])
                     selected_predicted_magnitude.append(predicted_magnitude[index])
 
-                selected_gt_adjustment_label = torch.stack(selected_gt_adjustment_label)
-                selected_predicted_adjustment = torch.stack(selected_predicted_adjustment)
-                selected_gt_magnitude_label = torch.stack(selected_gt_magnitude_label)
-                selected_predicted_magnitude = torch.stack(selected_predicted_magnitude)
+                if len(selected_gt_adjustment_label) != 0:
+                    selected_gt_adjustment_label = torch.stack(selected_gt_adjustment_label)
+                    selected_predicted_adjustment = torch.stack(selected_predicted_adjustment)
+                    selected_gt_magnitude_label = torch.stack(selected_gt_magnitude_label)
+                    selected_predicted_magnitude = torch.stack(selected_predicted_magnitude)
+                    self.suggested_iter += 1
 
                 # caculate loss
                 self.suggestion_loss_sum += self.suggestion_loss_fn(predicted_suggestion, gt_suggestion_label)
-                self.magnitude_loss_sum += self.magnitude_loss_fn(selected_predicted_magnitude, selected_gt_magnitude_label)
-                self.adjustment_loss_sum += self.adjustment_loss_fn(selected_predicted_adjustment, selected_gt_adjustment_label)
+                if len(selected_gt_adjustment_label) != 0:
+                    self.magnitude_loss_sum += self.magnitude_loss_fn(selected_predicted_magnitude, selected_gt_magnitude_label)
+                    self.adjustment_loss_sum += self.adjustment_loss_fn(selected_predicted_adjustment, selected_gt_adjustment_label)
 
                 # convert tensor to numpy for using sklearn metrics
                 gt_magnitude_label = gt_magnitude_label.to('cpu').numpy()
@@ -169,8 +173,11 @@ class Tester(object):
         print('\n======test end======\n')
 
         ave_suggestion_loss = self.suggestion_loss_sum / self.data_length
-        ave_magnitude_loss = self.magnitude_loss_sum  / self.data_length
-        ave_adjustment_loss = self.adjustment_loss_sum / self.data_length
+        ave_magnitude_loss = 0
+        ave_adjustment_loss = 0
+        if self.suggested_iter != 0:
+            ave_magnitude_loss = self.magnitude_loss_sum  / self.suggested_iter
+            ave_adjustment_loss = self.adjustment_loss_sum / self.suggested_iter
 
         loss_log = f'{ave_suggestion_loss}/{ave_adjustment_loss}/{ave_magnitude_loss}'
         accuracy_log = f'{auc_score:.5f}/{tpr:.5f}/{f1_score}/{iou_score:.5f}'
@@ -178,13 +185,13 @@ class Tester(object):
         print(loss_log)
         print(accuracy_log)
         
-        wandb.log({"Test/test_magnitude_loss": ave_magnitude_loss, "Test/test_adjustment_loss": ave_adjustment_loss, "Test/test_suggestion_loss": ave_suggestion_loss})
+        wandb.log({f"Test{self.adjustment_threshold}/test_magnitude_loss": ave_magnitude_loss, f"Test{self.adjustment_threshold}/test_adjustment_loss": ave_adjustment_loss, f"Test{self.adjustment_threshold}/test_suggestion_loss": ave_suggestion_loss})
         wandb.log({
-            f"Test/f1-score(left)": f1_score[0],
-            f"Test/f1-score(right)": f1_score[1],
-            f"Test/f1-score(up)": f1_score[2],
-            f"Test/f1-score(down)": f1_score[3],
-            f"Test/IoU": iou_score,
+            f"Test{self.adjustment_threshold}/f1-score(left)": f1_score[0],
+            f"Test{self.adjustment_threshold}/f1-score(right)": f1_score[1],
+            f"Test{self.adjustment_threshold}/f1-score(up)": f1_score[2],
+            f"Test{self.adjustment_threshold}/f1-score(down)": f1_score[3],
+            f"Test{self.adjustment_threshold}/IoU": iou_score,
             f"suggestion_accuracy/auc": auc_score,
             f"suggestion_accuracy/tpr": tpr
         })
@@ -226,13 +233,17 @@ class Tester(object):
         if one_hot_encoded[0] == 1.0 and one_hot_encoded[1] == 1.0:
             with open('exception.csv', 'a') as f:
                 f.writelines(f'{array},{sigmoid_array}\n')
-            one_hot_encoded[0] = 0.0
-            one_hot_encoded[1] = 0.0
+            if one_hot_encoded[0] > one_hot_encoded[1]:
+                one_hot_encoded[0] = 1.0
+            else:
+                one_hot_encoded[1] = 1.0
         if one_hot_encoded[2] == 1.0 and one_hot_encoded[3] == 1.0:
             with open('exception.csv', 'a') as f:
                 f.writelines(f'{array},{sigmoid_array}\n')
-            one_hot_encoded[2] = 0.0
-            one_hot_encoded[3] = 0.0
+            if one_hot_encoded[2] > one_hot_encoded[3]:
+                one_hot_encoded[2] = 1.0
+            else:
+                one_hot_encoded[3] = 1.0
                 
         return one_hot_encoded
     
@@ -284,5 +295,5 @@ if __name__ == '__main__':
     weight_file = os.path.join(cfg.weight_dir, 'checkpoint-weight.pth')
     model.load_state_dict(torch.load(weight_file))
 
-    tester = Tester(model, cfg, cfg.adjustment_threshold)
+    tester = Tester(model, cfg, [0.1, 0.1, 0.1, 0.1])
     tester.run()

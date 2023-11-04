@@ -15,13 +15,13 @@ class Config:
         self.adjustment_count = 4
         self.fpr_limit = 0.3
         self.suggestion_threshold = 0.9
-        self.adjustment_threshold = [0.6, 0.6, 0.6, 0.6]
+        self.adjustment_threshold = [0.5, 0.5, 0.5, 0.5]
 
         self.gpu_id = 0
         self.num_workers = 0
 
         self.batch_size = 64
-        self.learning_rate = 2e-5
+        self.learning_rate = 1e-6
         self.weight_decay = 5e-4
 
         self.max_epoch = 10000

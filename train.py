@@ -197,8 +197,10 @@ class Trainer(object):
             torch.save(self.model.state_dict(), checkpoint_path)
             print('Checkpoint Saved...\n')
 
-            
-            test_while_training(adjustment_threshold=self.cfg.adjustment_threshold)
+            for threshold in range(1, 8, 1):
+                threshold /= 10
+                threshold_by_label = [threshold, threshold, threshold, threshold]
+                test_while_training(adjustment_threshold=threshold_by_label)
 
             epoch_log = 'epoch: %d / %d, lr: %8f' % (self.epoch, self.max_epoch, self.optimizer.param_groups[0]['lr'])
             print(epoch_log)
