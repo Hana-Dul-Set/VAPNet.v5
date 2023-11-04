@@ -37,7 +37,7 @@ class VAPNet(nn.Module):
 
         self.magnitude_output_layer = nn.Sequential(
             nn.Linear(1024, 1024),
-            nn.Linear(1024, 2),
+            nn.Linear(1024, 4),
         )
         
     def forward(self, image):

@@ -147,21 +147,18 @@ class Tester(object):
             if suggestion_label < self.suggestion_threshold:
                 magnitude = [0.0, 0.0]
             else:
-                magnitude = total_predicted_magnitude[index].copy()
+                magnitude = [0.0, 0.0]
+                magnitude_label = total_predicted_magnitude[index].copy()
 
-                if adjustment_label[0] == 0.0 and adjustment_label[1] == 0.0:
-                    magnitude[0] = 0.0
-                elif adjustment_label[0] == 1:
-                    magnitude[0] = -magnitude[0]
+                if adjustment_label[0] == 1:
+                    magnitude[0] = -magnitude_label[0]
                 elif adjustment_label[1] == 1:
-                    magnitude[0] = magnitude[0]
+                    magnitude[0] = magnitude_label[1]
 
-                if adjustment_label[2] == 0.0 and adjustment_label[3] == 0.0:
-                    magnitude[1] = 0.0
-                elif adjustment_label[2] == 1:
-                    magnitude[1] = -magnitude[1]
+                if adjustment_label[2] == 1:
+                    magnitude[1] = -magnitude_label[2]
                 elif adjustment_label[3] == 1:
-                    magnitude[1] = magnitude[1]
+                    magnitude[1] = magnitude_label[3]
 
             predicted_box = get_shifted_box(image_size=total_image_size[index], \
                                             bounding_box_corners=gt_perturbed_box, \

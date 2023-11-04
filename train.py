@@ -230,19 +230,24 @@ class Trainer(object):
         perturbed_image, operator = output
         
         adjustment_label = [0.0] * 4
+        magnitude_label = [0.0] * 4
         if operator[0] < 0:
             operator[0] = abs(operator[0])
             adjustment_label[1] = 1.0
+            magnitude_label[1] = operator[0]
         elif operator[1] > 0:
             adjustment_label[0] = 1.0
+            magnitude_label[0] = operator[0]
         
         if operator[1] < 0:
             operator[1] = abs(operator[1])
             adjustment_label[3] = 1.0
+            magnitude_label[3] = operator[1]
         elif operator[1] > 0:
             adjustment_label[2] = 1.0
+            magnitude_label[2] = operator[1]
     
-        return perturbed_image, (operator[0], operator[1]), adjustment_label, [1.0]
+        return perturbed_image, magnitude_label, adjustment_label, [1.0]
 
     def get_labeled_data_list(self, bc_data_list):
         image_list = []
@@ -266,7 +271,7 @@ if __name__ == '__main__':
     
     wandb.init(
         # set the wandb project where this run will be logged
-        project="vapnet.v4",
+        project="vapnet.v5",
         
         # track hyperparameters and run metadata
         config={
