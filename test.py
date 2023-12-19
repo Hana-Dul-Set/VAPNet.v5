@@ -39,7 +39,7 @@ class Tester(object):
         self.batch_size = self.cfg.batch_size
 
         self.suggestion_loss_fn = torch.nn.BCELoss(reduction='mean')
-        self.adjustment_loss_fn = torch.nn.BCEWithLogitsLoss(reduction='mean')
+        self.adjustment_loss_fn = torch.nn.BCEWithLogitsLoss(reduction='none')
         self.magnitude_loss_fn = torch.nn.L1Loss(reduction='mean')
 
         self.fpr_limit = self.cfg.fpr_limit
@@ -54,6 +54,7 @@ class Tester(object):
         self.suggestion_loss_sum = 0
         self.magnitude_loss_sum = 0
         self.adjustment_loss_sum = 0
+        self.adjustment_loss_individual_sum = [0.0, 0.0, 0.0, 0.0]
         self.iou_score_sum = 0
 
     def run(self, custom_threshold=0):
@@ -109,8 +110,16 @@ class Tester(object):
                 self.suggestion_loss_sum += self.suggestion_loss_fn(predicted_suggestion, gt_suggestion_label)
                 if len(selected_gt_adjustment_label) != 0:
                     self.magnitude_loss_sum += self.magnitude_loss_fn(selected_predicted_magnitude, selected_gt_magnitude_label)
-                    self.adjustment_loss_sum += self.adjustment_loss_fn(selected_predicted_adjustment, selected_gt_adjustment_label)
-
+                    adjustment_loss = self.adjustment_loss_fn(selected_predicted_adjustment, selected_gt_adjustment_label)
+                    individual_adjustment_sum = [0.0, 0.0, 0.0, 0.0]
+                    for loss in adjustment_loss:
+                        for index, value in enumerate(loss):
+                            individual_adjustment_sum[index] += value
+                    individual_adjustment_sum = [x / adjustment_loss.size()[0] for x in individual_adjustment_sum]
+                    for index, value in enumerate(individual_adjustment_sum):
+                        self.adjustment_loss_individual_sum[index] += value
+                    self.adjustment_loss_sum += torch.sum(adjustment_loss) / (adjustment_loss.size()[0] * self.adjustment_count)
+                    
                 # convert tensor to numpy for using sklearn metrics
                 gt_magnitude_label = gt_magnitude_label.to('cpu').numpy()
                 predicted_magnitude = predicted_magnitude.to('cpu').numpy()
@@ -175,7 +184,8 @@ class Tester(object):
         if self.suggested_iter != 0:
             ave_magnitude_loss = self.magnitude_loss_sum  / self.suggested_iter
             ave_adjustment_loss = self.adjustment_loss_sum / self.suggested_iter
-
+            ave_adjustment_individual_loss = [x / self.suggested_iter for x in self.adjustment_loss_individual_sum]
+        print(ave_adjustment_individual_loss)
         loss_log = f'{ave_suggestion_loss}/{ave_adjustment_loss}/{ave_magnitude_loss}'
         accuracy_log = f'{auc_score:.5f}/{tpr:.5f}/{f1_score}/{iou_score:.5f}'
     
@@ -183,6 +193,12 @@ class Tester(object):
         print(accuracy_log)
         
         wandb.log({f"Test{self.adjustment_threshold}/test_magnitude_loss": ave_magnitude_loss, f"Test{self.adjustment_threshold}/test_adjustment_loss": ave_adjustment_loss, f"Test{self.adjustment_threshold}/test_suggestion_loss": ave_suggestion_loss})
+        wandb.log({
+            f"Test{self.adjustment_threshold}/adjustment_loss(left)": ave_adjustment_individual_loss[0],
+            f"Test{self.adjustment_threshold}/adjustment_loss(right)": ave_adjustment_individual_loss[1],
+            f"Test{self.adjustment_threshold}/adjustment_loss(up)": ave_adjustment_individual_loss[2],
+            f"Test{self.adjustment_threshold}/adjustment_loss(down)": ave_adjustment_individual_loss[3]
+        })
         wandb.log({
             f"Test{self.adjustment_threshold}/f1-score(left)": f1_score[0],
             f"Test{self.adjustment_threshold}/f1-score(right)": f1_score[1],
@@ -289,8 +305,8 @@ if __name__ == '__main__':
     cfg = Config()
 
     model = VAPNet(cfg)
-    weight_file = os.path.join(cfg.weight_dir, 'checkpoint-weight.pth')
+    weight_file = os.path.join(cfg.weight_dir, '1105_10epoch_vapnetv5.pth')
     model.load_state_dict(torch.load(weight_file))
 
-    tester = Tester(model, cfg, [0.1, 0.1, 0.1, 0.1])
+    tester = Tester(model, cfg, [0.5, 0.5, 0.5, 0.5])
     tester.run()

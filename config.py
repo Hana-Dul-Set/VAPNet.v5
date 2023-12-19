@@ -18,7 +18,7 @@ class Config:
         self.adjustment_threshold = [0.5, 0.5, 0.5, 0.5]
 
         self.gpu_id = 0
-        self.num_workers = 0
+        self.num_workers = 4
 
         self.batch_size = 64
         self.learning_rate = 1e-6

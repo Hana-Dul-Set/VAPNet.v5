@@ -8,6 +8,8 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.transforms import transforms
 
+from config import Config
+
 # best crop dataset for training(FCDB, GAICD)
 class BCDataset(Dataset):
     def __init__(self, mode, cfg) :
@@ -50,7 +52,7 @@ class UnlabledDataset(Dataset):
         self.dataset_path = self.cfg.unlabeled_data
         
         if mode == 'train':
-            self.annotation_path = os.path.join(self.dataset_path, 'unlabeled_training_set_v4_1101_h_a.json')
+            self.annotation_path = os.path.join(self.dataset_path, 'unlabeled_training_set_v5_1104_h_a.json')
 
         self.data_list = self.build_data_list()
 
@@ -76,11 +78,11 @@ class LabledDataset(Dataset):
     def __init__(self, mode, cfg) :
         self.cfg = cfg
 
-        self.image_dir = os.path.join(self.cfg.image_dir, 'image_labeled_vapnet')
+        self.image_dir = os.path.join('./data', 'image_labeled_vapnet_v5')
         self.dataset_path = self.cfg.labeled_data
         
         if mode == 'test':
-            self.annotation_path = os.path.join(self.dataset_path, 'labeled_testing_set_v4.json')
+            self.annotation_path = os.path.join(self.dataset_path, 'labeled_testing_set_v5.json')
 
         self.data_list = self.build_data_list()
 
@@ -106,12 +108,12 @@ class LabledDataset(Dataset):
         np_image = cv2.resize(np_image, self.cfg.image_size)
         transformed_image = self.transformer(np_image)
         
-        bounding_box = torch.tensor(data['bounding_box'])
-        perturbed_bounding_box = torch.tensor(data['perturbed_bounding_box'])
+        bounding_box = torch.tensor(data['bounding_box']).float()
+        perturbed_bounding_box = torch.tensor(data['perturbed_bounding_box']).float()
         suggestion_label = torch.tensor(data['suggestion'])
         adjustment_label = torch.tensor(data['adjustment'])
         magnitude_label = torch.tensor(data['magnitude'])
-        return transformed_image, image_size, bounding_box, perturbed_bounding_box, magnitude_label, adjustment_label, suggestion_label
+        return transformed_image, image_size, bounding_box, perturbed_bounding_box, suggestion_label, adjustment_label, magnitude_label
 
     def build_data_list(self):
         data_list = []
